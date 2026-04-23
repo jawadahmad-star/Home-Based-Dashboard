@@ -1,0 +1,5 @@
+# Ignore large data files and template
+*.dta
+*.xlsx
+template.html
+*.csv
