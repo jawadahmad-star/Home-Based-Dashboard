@@ -302,6 +302,108 @@
         <div class="chart-wrap"><canvas id="chartHarassOverview"></canvas></div>
       </div>
     </div>
+    <!-- Interest Form by Treatment -->
+    <div style="margin-bottom:24px;">
+      <div class="section-header" style="margin-bottom:20px;padding-bottom:12px;">
+        <div class="section-header-accent"></div>
+        <div>
+          <h2 style="font-size:20px;">Factory Job Interest Form — By Treatment Group</h2>
+          <p id="if-subtitle"></p>
+        </div>
+      </div>
+
+      <!-- Summary KPI row -->
+      <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:20px;">
+        <div class="kpi-card teal">
+          <div class="kpi-icon">✅</div>
+          <div class="kpi-value" id="if-treat-agree"></div>
+          <div class="kpi-label">Treatment — Agreed</div>
+          <div class="kpi-delta up" id="if-treat-agree-pct"></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-icon">❌</div>
+          <div class="kpi-value" id="if-treat-decline"></div>
+          <div class="kpi-label">Treatment — Declined</div>
+          <div class="kpi-delta down" id="if-treat-decline-pct"></div>
+        </div>
+        <div class="kpi-card teal">
+          <div class="kpi-icon">✅</div>
+          <div class="kpi-value" id="if-ctrl-agree"></div>
+          <div class="kpi-label">Control — Agreed</div>
+          <div class="kpi-delta up" id="if-ctrl-agree-pct"></div>
+        </div>
+        <div class="kpi-card navy">
+          <div class="kpi-icon">❌</div>
+          <div class="kpi-value" id="if-ctrl-decline"></div>
+          <div class="kpi-label">Control — Declined</div>
+          <div class="kpi-delta navy">0% decline rate</div>
+        </div>
+      </div>
+
+      <!-- Side-by-side comparison cards -->
+      <div class="chart-grid cols-2" style="margin-bottom:20px;">
+        <div class="chart-card">
+          <h3>Treatment Group</h3>
+          <div class="chart-desc" id="if-treat-desc"></div>
+          <div style="margin-top:16px;" class="progress-list">
+            <div>
+              <div class="progress-header">
+                <span class="progress-label">Agreed to Interest Form</span>
+                <span class="progress-pct" id="if-treat-bar-pct"></span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill teal" id="if-treat-bar" style="width:0%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="progress-header">
+                <span class="progress-label">Declined</span>
+                <span class="progress-pct" id="if-treat-dec-pct"></span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill red" id="if-treat-dec-bar" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="insight-box teal" style="margin-top:16px;margin-bottom:0;">
+            <span id="if-treat-insight"></span>
+          </div>
+        </div>
+        <div class="chart-card">
+          <h3>Control Group</h3>
+          <div class="chart-desc" id="if-ctrl-desc"></div>
+          <div style="margin-top:16px;" class="progress-list">
+            <div>
+              <div class="progress-header">
+                <span class="progress-label">Agreed to Interest Form</span>
+                <span class="progress-pct" id="if-ctrl-bar-pct"></span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill teal" id="if-ctrl-bar" style="width:0%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="progress-header">
+                <span class="progress-label">Declined</span>
+                <span class="progress-pct" id="if-ctrl-dec-pct"></span>
+              </div>
+              <div class="progress-bar">
+                <div class="progress-fill red" id="if-ctrl-dec-bar" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="insight-box primary" style="margin-top:16px;margin-bottom:0;">
+            <span id="if-ctrl-insight"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary insight -->
+      <div class="insight-box navy" style="margin-bottom:0;">
+        <span id="if-summary"></span>
+      </div>
+    </div>
+
     <p class="footnote" id="fn-overview"></p>
   </div>
 
@@ -887,7 +989,15 @@ const DATA = {
     [8,  4, 2, 0],  // mh_3
     [0,  0, 8, 6],  // mh_4
     [0,  1, 6, 7]   // mh_5
-  ]
+  ],
+
+  // ── Interest Form (factory job expression of interest, wife survey)
+  interestForm: {
+    treatAgree:   3,  ctrlAgree:   5,
+    treatDecline: 2,  ctrlDecline: 0,
+    treatTotal:   5,  ctrlTotal:   5,
+    noData:       5
+  }
 };
 
 /* ══════════════════════════════════════════════════════
@@ -986,6 +1096,34 @@ function initDashboard() {
   set('cd-wstatus', `Current employment status among wife respondents (n=${wWorkBase} with data)`);
   set('cd-harass', `How common is harassment for women travelling to work? (husband n=${nH}, wife n=${D.harWife.never+D.harWife.rare+D.harWife.some})`);
   set('fn-overview', `Data collected ${D.lastUpdated} via SurveyCTO digital CAPI. Husband survey: n=${nH} (${D.treatment} treatment, ${D.control} control). Wife survey: n=${nW} (${wWorkBase} with full data, ${nW-wWorkBase} no consent). Study area: Pakistan garment/textile sector. Research Solutions (M&A Research Solutions LLC) | www.rs.org.pk`);
+
+  // ── Interest Form section
+  const IF = D.interestForm;
+  const ifTreatPct  = pct(IF.treatAgree, IF.treatTotal);
+  const ifCtrlPct   = pct(IF.ctrlAgree,  IF.ctrlTotal);
+  const ifTreatDecPct = pct(IF.treatDecline, IF.treatTotal);
+  const ifCtrlDecPct  = pct(IF.ctrlDecline,  IF.ctrlTotal);
+  set('if-subtitle', `Expression of interest for a factory job opportunity, collected at endline among wives with treatment assignment. Treatment n=${IF.treatTotal}, Control n=${IF.ctrlTotal}; ${IF.noData} respondents excluded (no treatment assignment recorded).`);
+  set('if-treat-agree', IF.treatAgree);
+  set('if-treat-agree-pct', `${ifTreatPct}% agreement rate`);
+  set('if-treat-decline', IF.treatDecline);
+  set('if-treat-decline-pct', `${ifTreatDecPct}% declined`);
+  set('if-ctrl-agree',  IF.ctrlAgree);
+  set('if-ctrl-agree-pct', `${ifCtrlPct}% agreement rate`);
+  set('if-ctrl-decline', IF.ctrlDecline);
+  set('if-treat-desc', `${IF.treatAgree} of ${IF.treatTotal} treatment wives agreed to submit an interest form for factory employment.`);
+  set('if-ctrl-desc',  `${IF.ctrlAgree} of ${IF.ctrlTotal} control wives agreed to submit an interest form for factory employment.`);
+  set('if-treat-bar-pct', `${ifTreatPct}%`);
+  set('if-treat-dec-pct', `${ifTreatDecPct}%`);
+  set('if-ctrl-bar-pct',  `${ifCtrlPct}%`);
+  set('if-ctrl-dec-pct',  `${ifCtrlDecPct}%`);
+  setW('if-treat-bar',    ifTreatPct);
+  setW('if-treat-dec-bar',ifTreatDecPct);
+  setW('if-ctrl-bar',     ifCtrlPct);
+  setW('if-ctrl-dec-bar', ifCtrlDecPct);
+  set('if-treat-insight', `<strong>${ifTreatPct}% uptake</strong> in treatment group — ${IF.treatAgree} out of ${IF.treatTotal} wives expressed interest. ${IF.treatDecline} declined.`);
+  set('if-ctrl-insight',  `<strong>${ifCtrlPct}% uptake</strong> in control group — all ${IF.ctrlAgree} of ${IF.ctrlTotal} wives submitted an interest form.`);
+  set('if-summary', `<strong>Key Finding:</strong> Control group wives showed higher expressed interest (${ifCtrlPct}%) than treatment group wives (${ifTreatPct}%), with ${IF.ctrlAgree}/${IF.ctrlTotal} vs ${IF.treatAgree}/${IF.treatTotal} agreeing to submit a factory job interest form. Note: ${IF.noData} wife respondents could not be classified (no treatment assignment in data).`);
 
   // ── Wife Employment KPIs
   set('kpi-wworking',     D.wWorking);
