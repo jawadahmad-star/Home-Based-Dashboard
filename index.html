@@ -896,13 +896,13 @@
 const DATA = {
   lastUpdated:    "April 24, 2026",
 
-  // ── Sample
+  // -- Sample
   nWives:         30,
   nHusbands:      30,
   treatment:      20,
   control:        10,
 
-  // ── Wife employment
+  // -- Wife employment
   wWorking:       25,
   wNotWorking:    5,
   wWorkDays:      5.5,
@@ -921,7 +921,7 @@ const DATA = {
   wConcernFamily: 3,
   wConcernSafety: 5,
 
-  // ── Husband employment
+  // -- Husband employment
   hSectorApparel: 15,
   hSectorMfg:     2,
   hSectorTransport:4,
@@ -935,7 +935,7 @@ const DATA = {
   hConcernChores: 12,
   hConcernSafety: 2,
 
-  // ── Earnings
+  // -- Earnings
   wAvgEarnings:   5412,
   hAvgEarnings:   37933,
   wFactoryEst:    29467,
@@ -946,7 +946,7 @@ const DATA = {
   // Earnings share (wife view):    1=Husb all,2=Husb most,3=Half,5=Wife all
   wShare: { wifeAll:6, half:5, husbMost:6, husbAll:7 },
 
-  // ── Household time (hrs/day)
+  // -- Household time (hrs/day)
   wOwnChores:     4.4,
   wOwnCare:       2.3,
   hOwnChores:     0.57,
@@ -954,7 +954,7 @@ const DATA = {
   hHelpsWife:     0.97,
   wHelpsHusb:     0.6,
 
-  // ── Mobility
+  // -- Mobility
   tripWalk:       11,
   tripRick:       13,
   tripBus:        6,
@@ -963,35 +963,35 @@ const DATA = {
   tripColleague:  2,
   tripsPerWeek:   2.23,
 
-  // ── Decision making (count of "joint" responses, base n=30 each)
+  // -- Decision making (count of joint responses, base n=30 each)
   dmBase:         30,
-  dmWifeJoint:    [25, 26, 26],   // [health, purchases, visits]
+  dmWifeJoint:    [25, 26, 26],
   dmWifeHusbAlone:[3,  4,  4],
   dmHusbJoint:    [20, 20, 20],
   dmHusbAlone:    [9,  9,  7],
 
-  // ── Harassment
+  // -- Harassment
   harHusb: { never:2, rare:4, some:17 },
   harWife: { never:7, rare:7, some:15  },
 
-  // ── Mental health means (1=Not at all, 4=Nearly every day)
+  // -- Mental health means (1=Not at all, 4=Nearly every day)
   mhWife: [1.13, 1.23, 2.17, 2.87, 3.57],
   mhHusb: [1.77, 1.9, 2.5, 2.4, 2.7],
 
-  // ── Social desirability means (1=True, 2=False)
+  // -- Social desirability means (1=True, 2=False)
   sdWife: [1.17, 1.5, 1.43, 1.53, 1.17],
   sdHusb: [1.2, 1.6, 1.27, 1.33, 1.23],
 
-  // ── Wife MH distribution (counts per level 1-4 for each of mh_1...mh_5)
+  // -- Wife MH distribution (counts per level 1-4 for each of mh_1...mh_5)
   mhWifeDist: [
-    [26, 4, 0, 0],  // mh_1
-    [24, 5, 1, 0],  // mh_2
-    [9, 9, 10, 2],  // mh_3
-    [4, 8, 6, 12],  // mh_4
-    [0, 3, 7, 20]   // mh_5
+    [26, 4, 0, 0],
+    [24, 5, 1, 0],
+    [9, 9, 10, 2],
+    [4, 8, 6, 12],
+    [0, 3, 7, 20]
   ],
 
-  // ── Interest Form (factory job expression of interest, wife survey)
+  // -- Interest Form (factory job expression of interest, wife survey)
   interestForm: {
     treatAgree:   8,  ctrlAgree:   5,
     treatDecline: 12,  ctrlDecline: 5,
