@@ -949,7 +949,7 @@ const DATA = {
   // ── Household time (hrs/day)
   wOwnChores:     4.59,
   wOwnCare:       2.21,
-  hOwnChores:     0.70,
+  hOwnChores:     0.7,
   hOwnCare:       0.87,
   hHelpsWife:     1.13,
   wHelpsHusb:     0.79,
@@ -972,30 +972,30 @@ const DATA = {
 
   // ── Harassment
   harHusb: { never:2, rare:3, some:17 },
-  harWife: { never:9, rare:8, some:12 },
+  harWife: { never:9, rare:8, some:12  },
 
   // ── Mental health means (1=Not at all, 4=Nearly every day)
-  mhWife: [1.10, 1.07, 1.79, 2.41, 3.07],
-  mhHusb: [1.93, 1.90, 2.47, 2.43, 2.73],
+  mhWife: [1.1, 1.07, 1.79, 2.41, 3.07],
+  mhHusb: [1.93, 1.9, 2.47, 2.43, 2.73],
 
   // ── Social desirability means (1=True, 2=False)
   sdWife: [1.14, 1.45, 1.38, 1.52, 1.17],
-  sdHusb: [1.10, 1.53, 1.27, 1.30, 1.13],
+  sdHusb: [1.1, 1.53, 1.27, 1.3, 1.13],
 
-  // ── Wife MH distribution (counts per level 1–4 for each of mh_1…mh_5)
+  // ── Wife MH distribution (counts per level 1-4 for each of mh_1...mh_5)
   mhWifeDist: [
-    [26, 3,  0,  0],  // mh_1
-    [28, 0,  1,  0],  // mh_2
-    [14, 9,  4,  2],  // mh_3
-    [9,  7,  5,  8],  // mh_4
-    [5,  3,  6,  15]  // mh_5
+    [26, 3, 0, 0],  // mh_1
+    [28, 0, 1, 0],  // mh_2
+    [14, 9, 4, 2],  // mh_3
+    [9, 7, 5, 8],  // mh_4
+    [5, 3, 6, 15]   // mh_5
   ],
 
   // ── Interest Form (factory job expression of interest, wife survey)
   interestForm: {
     treatAgree:   6,  ctrlAgree:   5,
     treatDecline: 8,  ctrlDecline: 7,
-    treatTotal:   14, ctrlTotal:   12,
+    treatTotal:   14, ctrlTotal: 12,
     noData:       5
   }
 };
