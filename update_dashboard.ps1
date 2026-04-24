@@ -63,10 +63,19 @@ HTML_FILE = DASHBOARD + r"\index.html"
 h_df, _ = pyreadstat.read_dta(DASHBOARD + r"\Pak HBW Survey - Husband - Endline.dta")
 w_df, _ = pyreadstat.read_dta(DASHBOARD + r"\Pak HBW Survey - Wife - Endline.dta")
 
-# Use all unique rows (all couple_ids are distinct in source data)
-h = h_df.copy()
-w = w_df.copy()
-w = w.merge(h[['couple_id_entry','treat_label']], on='couple_id_entry', how='left')
+# Filter to completed surveys only (survey_status == 1)
+h = h_df[h_df['survey_status'] == 1].copy()
+w = w_df[w_df['survey_status'] == 1].copy()
+
+# Deduplicate by hhd_id: keep latest submission per household (handles re-entries by multiple enumerators)
+h = h.sort_values('submissiondate').groupby('hhd_id', as_index=False).last()
+w = w.sort_values('submissiondate').groupby('hhd_id', as_index=False).last()
+
+# Keep only matched households (both husband and wife completed)
+common_hhids = set(h['hhd_id']) & set(w['hhd_id'])
+h = h[h['hhd_id'].isin(common_hhids)].copy()
+w = w[w['hhd_id'].isin(common_hhids)].copy()
+w = w.merge(h[['hhd_id','treat_label']], on='hhd_id', how='inner')
 
 nW = len(w)
 nH = len(h)
@@ -307,7 +316,10 @@ print(f"OK: Working wives={wWorking} | Still working (husb report)={wStillWorkin
 print(f"OK: index.html updated — {today}", flush=True)
 '@
 
-$result = python -c $pythonScript $DashboardDir 2>&1
+$tmpScript = "$env:TEMP\hbw_update.py"
+$pythonScript | Out-File -FilePath $tmpScript -Encoding utf8
+
+$result = python $tmpScript $DashboardDir 2>&1
 $result | ForEach-Object { Write-Host $_ }
 
 if ($LASTEXITCODE -ne 0) {
