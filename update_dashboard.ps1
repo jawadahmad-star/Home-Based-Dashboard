@@ -1,682 +1,329 @@
+# =============================================================
 # HBW Dashboard Daily Update Script
-# Run this after uploading new CSV files to regenerate stats and push to GitHub
-# Schedule via Windows Task Scheduler for daily auto-update
+# =============================================================
+# HOW TO RUN (daily process):
+#
+#   STEP 1 — Export latest DTA files from SurveyCTO / Stata:
+#             Place these two files in this DASHBOARD folder:
+#               • Pak HBW Survey - Husband - Endline.dta
+#               • Pak HBW Survey - Wife - Endline.dta
+#
+#   STEP 2 — Open PowerShell, navigate here, and run:
+#               cd "D:\RS- Projects\Home-based Worker Follow Up Survey\DASHBOARD"
+#               .\update_dashboard.ps1
+#
+#   STEP 3 — Script auto-updates index.html and pushes to GitHub.
+#             Dashboard goes live at: https://homebased.rs.org.pk
+#
+# REQUIREMENTS: Python 3 + pyreadstat installed
+#   Install once:  pip install pyreadstat
+# =============================================================
 
 param(
-    [string]$HusbandCSV = "D:\RS- Projects\Home-based Worker Follow Up Survey\Husband Survey Follow-up\Data\Pak HBW Survey - Husband - Endline_WIDE.csv",
-    [string]$WifeCSV    = "D:\RS- Projects\Home-based Worker Follow Up Survey\Wife Survey Follow-up\Data\Pak HBW Survey - Wife - Endline_WIDE.csv",
     [string]$DashboardDir = "D:\RS- Projects\Home-based Worker Follow Up Survey\DASHBOARD"
 )
 
 Set-Location $DashboardDir
 
+Write-Host ""
 Write-Host "=== HBW Dashboard Update Script ===" -ForegroundColor Cyan
 Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm')" -ForegroundColor Gray
+Write-Host ""
 
-# ── Read Data
+# ── Check DTA files exist
+$husbDTA = "$DashboardDir\Pak HBW Survey - Husband - Endline.dta"
+$wifeDTA = "$DashboardDir\Pak HBW Survey - Wife - Endline.dta"
+
+if (-not (Test-Path $husbDTA)) { Write-Host "ERROR: Husband DTA not found: $husbDTA" -ForegroundColor Red; exit 1 }
+if (-not (Test-Path $wifeDTA)) { Write-Host "ERROR: Wife DTA not found:    $wifeDTA" -ForegroundColor Red; exit 1 }
+Write-Host "DTA files found." -ForegroundColor Green
+
+# ── Check Python + pyreadstat
 try {
-    $h = Import-Csv $HusbandCSV -ErrorAction Stop
-    $w = Import-Csv $WifeCSV    -ErrorAction Stop
-    Write-Host "Data loaded: $($h.Count) husbands, $($w.Count) wives" -ForegroundColor Green
+    $null = & python -c "import pyreadstat" 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "pyreadstat not installed" }
+    Write-Host "Python + pyreadstat OK." -ForegroundColor Green
 } catch {
-    Write-Host "ERROR reading CSV files: $_" -ForegroundColor Red
+    Write-Host "ERROR: Python or pyreadstat not found." -ForegroundColor Red
+    Write-Host "Fix:   pip install pyreadstat" -ForegroundColor Yellow
     exit 1
 }
 
-# ── Compute Stats
-$nH       = $h.Count
-$nW       = $w.Count
-$treat    = ($h | Where-Object {$_.treat_label -eq 'Treatment'}).Count
-$ctrl     = ($h | Where-Object {$_.treat_label -eq 'Control'}).Count
+# ── Run Python to compute all stats and patch index.html
+Write-Host ""
+Write-Host "Reading DTA files and computing stats..." -ForegroundColor Yellow
 
-$wWorking = ($w | Where-Object {$_.current_work_status -eq '1'}).Count
-$wNotWork = ($w | Where-Object {$_.current_work_status -eq '2'}).Count
+$pythonScript = @'
+import pyreadstat, re, sys
+from datetime import date
 
-$wEarns   = $w | Where-Object {$_.current_monthly_earnings -match '^\d'} | ForEach-Object { [double]$_.current_monthly_earnings }
-$wAvgEarn = if ($wEarns.Count -gt 0) { [math]::Round(($wEarns | Measure-Object -Average).Average, 0) } else { 0 }
+DASHBOARD = sys.argv[1]
+HTML_FILE = DASHBOARD + r"\index.html"
 
-$hEarns   = $h | Where-Object {$_.earnings_own -match '^\d'} | ForEach-Object { [double]$_.earnings_own }
-$hAvgEarn = if ($hEarns.Count -gt 0) { [math]::Round(($hEarns | Measure-Object -Average).Average, 0) } else { 0 }
+h_df, _ = pyreadstat.read_dta(DASHBOARD + r"\Pak HBW Survey - Husband - Endline.dta")
+w_df, _ = pyreadstat.read_dta(DASHBOARD + r"\Pak HBW Survey - Wife - Endline.dta")
 
-$hWifeWork = ($h | Where-Object {$_.m_wife_work -eq '1'}).Count
-$wConsider = ($w | Where-Object {$_.consider_outside_12m -eq '1'}).Count
-$wDiscuss  = ($w | Where-Object {$_.discuss_husband_12m -eq '1'}).Count
+# Use all unique rows (all couple_ids are distinct in source data)
+h = h_df.copy()
+w = w_df.copy()
+w = w.merge(h[['couple_id_entry','treat_label']], on='couple_id_entry', how='left')
 
-# Wife chores
-$wOCh = ($w | Where-Object {$_.own_chores_hr -match '^\d'} | ForEach-Object { [double]$_.own_chores_hr } | Measure-Object -Average).Average
-$wOCr = ($w | Where-Object {$_.own_care_hr -match '^\d'} | ForEach-Object { [double]$_.own_care_hr } | Measure-Object -Average).Average
-$hOCh = ($h | Where-Object {$_.own_chores_hr -match '^\d'} | ForEach-Object { [double]$_.own_chores_hr } | Measure-Object -Average).Average
-$hSpCh = ($h | Where-Object {$_.sp_chores_hr -match '^\d'} | ForEach-Object { [double]$_.sp_chores_hr } | Measure-Object -Average).Average
+nW = len(w)
+nH = len(h)
+treat = int((h['treat_label'] == 'Treatment').sum())
+ctrl  = int((h['treat_label'] == 'Control').sum())
 
-$wOChR  = [math]::Round($wOCh, 2)
-$wOCrR  = [math]::Round($wOCr, 2)
-$hOChR  = [math]::Round($hOCh, 2)
-$hSpChR = [math]::Round($hSpCh, 2)
+def cnt(df, col, val):
+    return int((df[col] == val).sum())
 
-# Mental health avgs
-$mhVarsW = @{}; $mhVarsH = @{}
-foreach ($i in 1..5) {
-    $valsW = $w | Where-Object {$_."mh_$i" -match '^\d'} | ForEach-Object { [double]$_."mh_$i" }
-    $valsH = $h | Where-Object {$_."mh_$i" -match '^\d'} | ForEach-Object { [double]$_."mh_$i" }
-    $mhVarsW["mh_$i"] = if ($valsW.Count -gt 0) { [math]::Round(($valsW | Measure-Object -Average).Average, 2) } else { 0 }
-    $mhVarsH["mh_$i"] = if ($valsH.Count -gt 0) { [math]::Round(($valsH | Measure-Object -Average).Average, 2) } else { 0 }
-}
+def avg(df, col, positive=True):
+    mask = df[col].notna() & (df[col] > 0) if positive else df[col].notna() & (df[col] >= 0)
+    v = df.loc[mask, col]
+    return round(float(v.mean()), 2) if len(v) else 0.0
 
-# Wage awareness
-$wAw1 = ($w | Where-Object {$_.awareness_wage1 -match '^\d'} | ForEach-Object { [double]$_.awareness_wage1 } | Measure-Object -Average).Average
-$wAw1R = if ($wAw1) { [math]::Round($wAw1, 0) } else { 0 }
+def avgi(df, col):
+    return int(round(avg(df, col), 0))
 
-# Work days/hours
-$wDays = ($w | Where-Object {$_.current_work_days -match '^\d'} | ForEach-Object { [double]$_.current_work_days } | Measure-Object -Average).Average
-$wHrs  = ($w | Where-Object {$_.current_work_hrs  -match '^\d'} | ForEach-Object { [double]$_.current_work_hrs  } | Measure-Object -Average).Average
-$wDaysR = if ($wDays) { [math]::Round($wDays, 1) } else { 0 }
-$wHrsR  = if ($wHrs)  { [math]::Round($wHrs,  1) } else { 0 }
+# Wife employment
+wWorking        = cnt(w, 'current_work_status', 1)
+wNotWorking     = cnt(w, 'current_work_status', 2)
+wWorkDays       = round(avg(w, 'current_work_days'), 1)
+wWorkHrs        = round(avg(w, 'current_work_hrs'), 1)
+wStitching      = cnt(w, 'work_type_1', 1)
+wOtherWork      = max(0, wWorking - wStitching)
+wConsider       = cnt(w, 'consider_outside_12m', 1)
+wDontConsider   = cnt(w, 'consider_outside_12m', 2)
+wDiscussed      = cnt(w, 'discuss_husband_12m', 1)
+wNeverDiscussed = cnt(w, 'discuss_husband_12m', 3)
+hrSupport       = cnt(w, 'husband_reaction', 1)
+hrOpen          = cnt(w, 'husband_reaction', 2)
+hrAgainst       = cnt(w, 'husband_reaction', 4)
+wConcernChores  = cnt(w, 'wife_concern_1', 1)
+wConcernCare    = cnt(w, 'wife_concern_1', 2)
+wConcernFamily  = cnt(w, 'wife_concern_1', 3)
+wConcernSafety  = cnt(w, 'wife_concern_1', 5)
+
+# Husband employment
+hSectorApparel     = cnt(h, 'm_outside_work_type_1', 1)
+hSectorMfg         = cnt(h, 'm_outside_work_type_2', 1)
+hSectorTransport   = cnt(h, 'm_outside_work_type_3', 1)
+hSectorHospitality = cnt(h, 'm_outside_work_type_5', 1) if 'm_outside_work_type_5' in h.columns else 0
+hSectorConstruct   = cnt(h, 'm_outside_work_type_6', 1) if 'm_outside_work_type_6' in h.columns else 0
+hWeeklyHrs         = round(avg(h, 'm_weekly_hours'), 1)
+wStillWorking      = cnt(h, 'm_wife_work', 1)
+wWorkSame          = cnt(h, 'work_w_change', 2)
+wWorkWorse         = cnt(h, 'work_w_change', 3)
+hConcernCare       = cnt(h, 'husband_concern_1', 2)
+hConcernChores     = cnt(h, 'husband_concern_1', 1)
+hConcernSafety     = cnt(h, 'husband_concern_1', 5)
+
+# Earnings
+wAvgEarnings = avgi(w, 'current_monthly_earnings')
+hAvgEarnings = avgi(h, 'earnings_own')
+wFactoryEst  = avgi(w, 'awareness_wage1')
+hFactoryEst  = avgi(h, 'awareness_wage1')
+
+hSh_wifeAll  = cnt(h, 'earnings_share', 5)
+hSh_half     = cnt(h, 'earnings_share', 3)
+hSh_husbMost = cnt(h, 'earnings_share', 2)
+hSh_wifeMost = cnt(h, 'earnings_share', 4)
+wSh_wifeAll  = cnt(w, 'earnings_share', 5)
+wSh_half     = cnt(w, 'earnings_share', 3)
+wSh_husbMost = cnt(w, 'earnings_share', 2)
+wSh_husbAll  = cnt(w, 'earnings_share', 1)
+
+# Household time
+wOwnChores = round(avg(w, 'own_chores_hr', False), 2)
+wOwnCare   = round(avg(w, 'own_care_hr',   False), 2)
+hOwnChores = round(avg(h, 'own_chores_hr', False), 2)
+hOwnCare   = round(avg(h, 'own_care_hr',   False), 2)
+hHelpsWife = round(avg(h, 'sp_chores_hr',  False), 2)
+wHelpsHusb = round(avg(w, 'sp_chores_hr',  False), 2) if 'sp_chores_hr' in w.columns else 0.0
+
+# Mobility
+tripWalk      = cnt(w, 'trip_how', 1)
+tripRick      = cnt(w, 'trip_how', 2)
+tripBus       = cnt(w, 'trip_how', 3)
+tripAlone     = cnt(w, 'trip_company', 1)
+tripFamily    = cnt(w, 'trip_company', 2)
+tripColleague = cnt(w, 'trip_company', 4)
+tripsPerWeek  = round(avg(w, 'n_trips', False), 2)
 
 # Decision making
-$dm_w = @{}; $dm_h = @{}
-foreach ($d in 1..3) {
-    $dm_w["d$d"] = ($w | Where-Object {$_."decision_making_$d" -eq '2'}).Count
-    $dm_h["d$d"] = ($h | Where-Object {$_."decision_making_$d" -eq '2'}).Count
-}
+dmBase = nH
+dmWJ  = [cnt(w,'decision_making_1',2), cnt(w,'decision_making_2',2), cnt(w,'decision_making_3',2)]
+dmWHA = [cnt(w,'decision_making_1',3), cnt(w,'decision_making_2',3), cnt(w,'decision_making_3',3)]
+dmHJ  = [cnt(h,'decision_making_1',2), cnt(h,'decision_making_2',2), cnt(h,'decision_making_3',2)]
+dmHA  = [cnt(h,'decision_making_1',3), cnt(h,'decision_making_2',3), cnt(h,'decision_making_3',3)]
 
 # Harassment
-$harH = @{
-    never  = ($h | Where-Object {$_.harassment -eq '1'}).Count
-    rare   = ($h | Where-Object {$_.harassment -eq '2'}).Count
-    some   = ($h | Where-Object {$_.harassment -eq '3'}).Count
+harH = {'never': cnt(h,'harassment',1), 'rare': cnt(h,'harassment',2), 'some': cnt(h,'harassment',3)}
+harW = {'never': cnt(w,'harassment',1), 'rare': cnt(w,'harassment',2), 'some': cnt(w,'harassment',3)}
+
+# Mental health & social desirability
+mhW = [round(float(w[f'mh_{i}'].dropna().mean()), 2) for i in range(1,6)]
+mhH = [round(float(h[f'mh_{i}'].dropna().mean()), 2) for i in range(1,6)]
+sdW = [round(float(w[f'sd_{i}'].dropna().mean()), 2) for i in range(1,6)]
+sdH = [round(float(h[f'sd_{i}'].dropna().mean()), 2) for i in range(1,6)]
+
+# MH wife distribution (counts per response level 1-4)
+mhWifeDist = [[int((w[f'mh_{i}']==v).sum()) for v in [1,2,3,4]] for i in range(1,6)]
+
+# Interest form
+wt = w[w['treat_label'] == 'Treatment']
+wc = w[w['treat_label'] == 'Control']
+tA = cnt(wt, 'form_1', 1); tD = cnt(wt, 'form_1', 2)
+cA = cnt(wc, 'form_1', 1); cD = cnt(wc, 'form_1', 2)
+noData = int(w['form_1'].isna().sum())
+
+today = date.today().strftime('%B %#d, %Y')
+
+# Build new DATA block
+new_data = f"""const DATA = {{
+  lastUpdated:    "{today}",
+
+  // ── Sample
+  nWives:         {nW},
+  nHusbands:      {nH},
+  treatment:      {treat},
+  control:        {ctrl},
+
+  // ── Wife employment
+  wWorking:       {wWorking},
+  wNotWorking:    {wNotWorking},
+  wWorkDays:      {wWorkDays},
+  wWorkHrs:       {wWorkHrs},
+  wStitching:     {wStitching},
+  wOtherWork:     {wOtherWork},
+  wConsider:      {wConsider},
+  wDontConsider:  {wDontConsider},
+  wDiscussed:     {wDiscussed},
+  wNeverDiscussed:{wNeverDiscussed},
+  hrSupport:      {hrSupport},
+  hrOpen:         {hrOpen},
+  hrAgainst:      {hrAgainst},
+  wConcernChores: {wConcernChores},
+  wConcernCare:   {wConcernCare},
+  wConcernFamily: {wConcernFamily},
+  wConcernSafety: {wConcernSafety},
+
+  // ── Husband employment
+  hSectorApparel: {hSectorApparel},
+  hSectorMfg:     {hSectorMfg},
+  hSectorTransport:{hSectorTransport},
+  hSectorHospitality:{hSectorHospitality},
+  hSectorConstruct:{hSectorConstruct},
+  hWeeklyHrs:     {hWeeklyHrs},
+  wStillWorking:  {wStillWorking},
+  wWorkSame:      {wWorkSame},
+  wWorkWorse:     {wWorkWorse},
+  hConcernCare:   {hConcernCare},
+  hConcernChores: {hConcernChores},
+  hConcernSafety: {hConcernSafety},
+
+  // ── Earnings
+  wAvgEarnings:   {wAvgEarnings},
+  hAvgEarnings:   {hAvgEarnings},
+  wFactoryEst:    {wFactoryEst},
+  hFactoryEst:    {hFactoryEst},
+
+  // Earnings share (husband view): 1=Husb all,2=Husb most,3=Half,4=Wife most,5=Wife all
+  hShare: {{ wifeAll:{hSh_wifeAll}, half:{hSh_half}, husbMost:{hSh_husbMost}, wifeMost:{hSh_wifeMost} }},
+  // Earnings share (wife view):    1=Husb all,2=Husb most,3=Half,5=Wife all
+  wShare: {{ wifeAll:{wSh_wifeAll}, half:{wSh_half}, husbMost:{wSh_husbMost}, husbAll:{wSh_husbAll} }},
+
+  // ── Household time (hrs/day)
+  wOwnChores:     {wOwnChores},
+  wOwnCare:       {wOwnCare},
+  hOwnChores:     {hOwnChores},
+  hOwnCare:       {hOwnCare},
+  hHelpsWife:     {hHelpsWife},
+  wHelpsHusb:     {wHelpsHusb},
+
+  // ── Mobility
+  tripWalk:       {tripWalk},
+  tripRick:       {tripRick},
+  tripBus:        {tripBus},
+  tripAlone:      {tripAlone},
+  tripFamily:     {tripFamily},
+  tripColleague:  {tripColleague},
+  tripsPerWeek:   {tripsPerWeek},
+
+  // ── Decision making (count of "joint" responses, base n={dmBase} each)
+  dmBase:         {dmBase},
+  dmWifeJoint:    [{dmWJ[0]}, {dmWJ[1]}, {dmWJ[2]}],   // [health, purchases, visits]
+  dmWifeHusbAlone:[{dmWHA[0]},  {dmWHA[1]},  {dmWHA[2]}],
+  dmHusbJoint:    [{dmHJ[0]}, {dmHJ[1]}, {dmHJ[2]}],
+  dmHusbAlone:    [{dmHA[0]},  {dmHA[1]},  {dmHA[2]}],
+
+  // ── Harassment
+  harHusb: {{ never:{harH['never']}, rare:{harH['rare']}, some:{harH['some']} }},
+  harWife: {{ never:{harW['never']}, rare:{harW['rare']}, some:{harW['some']}  }},
+
+  // ── Mental health means (1=Not at all, 4=Nearly every day)
+  mhWife: [{mhW[0]}, {mhW[1]}, {mhW[2]}, {mhW[3]}, {mhW[4]}],
+  mhHusb: [{mhH[0]}, {mhH[1]}, {mhH[2]}, {mhH[3]}, {mhH[4]}],
+
+  // ── Social desirability means (1=True, 2=False)
+  sdWife: [{sdW[0]}, {sdW[1]}, {sdW[2]}, {sdW[3]}, {sdW[4]}],
+  sdHusb: [{sdH[0]}, {sdH[1]}, {sdH[2]}, {sdH[3]}, {sdH[4]}],
+
+  // ── Wife MH distribution (counts per level 1-4 for each of mh_1...mh_5)
+  mhWifeDist: [
+    [{mhWifeDist[0][0]}, {mhWifeDist[0][1]}, {mhWifeDist[0][2]}, {mhWifeDist[0][3]}],  // mh_1
+    [{mhWifeDist[1][0]}, {mhWifeDist[1][1]}, {mhWifeDist[1][2]}, {mhWifeDist[1][3]}],  // mh_2
+    [{mhWifeDist[2][0]}, {mhWifeDist[2][1]}, {mhWifeDist[2][2]}, {mhWifeDist[2][3]}],  // mh_3
+    [{mhWifeDist[3][0]}, {mhWifeDist[3][1]}, {mhWifeDist[3][2]}, {mhWifeDist[3][3]}],  // mh_4
+    [{mhWifeDist[4][0]}, {mhWifeDist[4][1]}, {mhWifeDist[4][2]}, {mhWifeDist[4][3]}]   // mh_5
+  ],
+
+  // ── Interest Form (factory job expression of interest, wife survey)
+  interestForm: {{
+    treatAgree:   {tA},  ctrlAgree:   {cA},
+    treatDecline: {tD},  ctrlDecline: {cD},
+    treatTotal:   {tA+tD}, ctrlTotal: {cA+cD},
+    noData:       {noData}
+  }}
+}};"""
+
+# Read index.html and replace the DATA block
+with open(HTML_FILE, 'r', encoding='utf-8') as f:
+    html = f.read()
+
+# Replace between "const DATA = {" and "};" (the first one after const DATA)
+pattern = r'const DATA = \{.*?\};'
+new_html = re.sub(pattern, new_data, html, count=1, flags=re.DOTALL)
+
+if new_html == html:
+    print("ERROR: Could not find const DATA block in index.html", flush=True)
+    sys.exit(1)
+
+with open(HTML_FILE, 'w', encoding='utf-8') as f:
+    f.write(new_html)
+
+print(f"OK: {nW} wives, {nH} husbands | Treatment={treat} Control={ctrl}", flush=True)
+print(f"OK: Wife earn=PKR{wAvgEarnings} | Husb earn=PKR{hAvgEarnings}", flush=True)
+print(f"OK: Working wives={wWorking} | Still working (husb report)={wStillWorking}", flush=True)
+print(f"OK: index.html updated — {today}", flush=True)
+'@
+
+$result = python -c $pythonScript $DashboardDir 2>&1
+$result | ForEach-Object { Write-Host $_ }
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "ERROR: Python script failed. index.html NOT updated." -ForegroundColor Red
+    exit 1
 }
-$harW = @{
-    never  = ($w | Where-Object {$_.harassment -eq '1'}).Count
-    rare   = ($w | Where-Object {$_.harassment -eq '2'}).Count
-    some   = ($w | Where-Object {$_.harassment -eq '3'}).Count
-}
-
-# Work sectors (husband)
-$sec1 = ($h | Where-Object {$_.m_outside_work_type_1 -eq '1'}).Count
-$sec2 = ($h | Where-Object {$_.m_outside_work_type_2 -eq '1'}).Count
-$sec3 = ($h | Where-Object {$_.m_outside_work_type_3 -eq '1'}).Count
-$sec5 = ($h | Where-Object {$_.m_outside_work_type_5 -eq '1'}).Count
-$sec6 = ($h | Where-Object {$_.m_outside_work_type_6 -eq '1'}).Count
-
-# Husband weekly hours
-$hWkHrs = ($h | Where-Object {$_.m_weekly_hours -match '^\d'} | ForEach-Object { [double]$_.m_weekly_hours } | Measure-Object -Average).Average
-$hWkHrsR = if ($hWkHrs) { [math]::Round($hWkHrs, 1) } else { 0 }
-
-# Wife still working (husband report)
-$wStillWork = ($h | Where-Object {$_.m_wife_work -eq '1'}).Count
-$wWorkPct   = if ($nH -gt 0) { [math]::Round($wStillWork * 100 / $nH, 0) } else { 0 }
-
-# Work change
-$wChSame  = ($h | Where-Object {$_.work_w_change -eq '2'}).Count
-$wChWorse = ($h | Where-Object {$_.work_w_change -eq '3'}).Count
-
-# Earnings share
-$hSh5 = ($h | Where-Object {$_.earnings_share -eq '5'}).Count
-$hSh3 = ($h | Where-Object {$_.earnings_share -eq '3'}).Count
-$hSh2 = ($h | Where-Object {$_.earnings_share -eq '2'}).Count
-$hSh4 = ($h | Where-Object {$_.earnings_share -eq '4'}).Count
-$wSh5 = ($w | Where-Object {$_.earnings_share -eq '5'}).Count
-$wSh3 = ($w | Where-Object {$_.earnings_share -eq '3'}).Count
-$wSh2 = ($w | Where-Object {$_.earnings_share -eq '2'}).Count
-$wSh1 = ($w | Where-Object {$_.earnings_share -eq '1'}).Count
-
-# Trip data
-$tripWalk = ($w | Where-Object {$_.trip_how -eq '1'}).Count
-$tripRick = ($w | Where-Object {$_.trip_how -eq '2'}).Count
-$tripBus  = ($w | Where-Object {$_.trip_how -eq '3'}).Count
-$tripAlone = ($w | Where-Object {$_.trip_company -eq '1'}).Count
-$tripFam   = ($w | Where-Object {$_.trip_company -eq '2'}).Count
-$tripColl  = ($w | Where-Object {$_.trip_company -eq '4'}).Count
-$tripAvg = ($w | Where-Object {$_.n_trips -match '^\d'} | ForEach-Object { [double]$_.n_trips } | Measure-Object -Average).Average
-$tripAvgR = if ($tripAvg) { [math]::Round($tripAvg, 2) } else { 0 }
-
-# Husband concerns
-$hCon1 = ($h | Where-Object {$_.husband_concern_1 -eq '1'}).Count
-$hCon2 = ($h | Where-Object {$_.husband_concern_1 -eq '2'}).Count
-$hCon5 = ($h | Where-Object {$_.husband_concern_1 -eq '5'}).Count
-
-# Wife concerns
-$wCon1 = ($w | Where-Object {$_.wife_concern_1 -eq '1'}).Count
-$wCon2 = ($w | Where-Object {$_.wife_concern_1 -eq '2'}).Count
-$wCon3 = ($w | Where-Object {$_.wife_concern_1 -eq '3'}).Count
-$wCon5 = ($w | Where-Object {$_.wife_concern_1 -eq '5'}).Count
-
-# Husband reaction to discussion
-$hrSup  = ($w | Where-Object {$_.husband_reaction -eq '1'}).Count
-$hrOpen = ($w | Where-Object {$_.husband_reaction -eq '2'}).Count
-$hrAgst = ($w | Where-Object {$_.husband_reaction -eq '4'}).Count
-
-$wWorkPctOfWith = if (($wWorking + $wNotWork) -gt 0) { [math]::Round($wWorking * 100 / ($wWorking + $wNotWork), 0) } else { 0 }
-$considerPct = if (($wConsider + ($w | Where-Object {$_.consider_outside_12m -eq '2'}).Count) -gt 0) { [math]::Round($wConsider * 100 / ($wConsider + ($w | Where-Object {$_.consider_outside_12m -eq '2'}).Count), 0) } else { 0 }
-
-$today = Get-Date -Format 'MMMM d, yyyy'
-$hHarassPct = if ($nH -gt 0) { [math]::Round($harH.some * 100 / $nH, 0) } else { 0 }
-
-Write-Host "`nKEY STATS:" -ForegroundColor Yellow
-Write-Host "  Wives: $nW | Husbands: $nH | Treatment: $treat | Control: $ctrl"
-Write-Host "  Wife avg earnings: PKR $wAvgEarn | Husband avg: PKR $hAvgEarn"
-Write-Host "  Working wives: $wWorking | Wife work (husband report): $wStillWork"
-Write-Host "  Work days: $wDaysR | Work hrs: $wHrsR"
-
-# ── Read current index.html
-$html = Get-Content "$DashboardDir\index.html" -Raw
-
-# ── Update KPI values using regex replacements for data-driven values
-# Update the "last updated" date in footer
-$html = $html -replace 'Data collected [A-Za-z]+ \d{4}', "Data collected $today"
-
-# Update main KPI numbers in header pill
-$html = $html -replace '\d+ Wives · \d+ Husbands · Endline', "$nW Wives · $nH Husbands · Endline"
-
-# ── Update JavaScript chart data
-$jsBlock = @"
-// ── OVERVIEW: Composition Doughnut
-new Chart(document.getElementById('chartComposition'), {
-  type: 'doughnut',
-  data: {
-    labels: ['Wives Surveyed', 'Husbands Surveyed'],
-    datasets: [{ data: [$nW, $nH], backgroundColor: [RED, NAVY], borderWidth: 0 }]
-  },
-  options: {
-    plugins: {
-      legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 12 } } },
-      datalabels: {
-        display: true, color: '#fff', font: { family: 'Inter', size: 14, weight: '700' },
-        formatter: (v) => v
-      }
-    }
-  }
-});
-
-// ── OVERVIEW: Treatment/Control
-new Chart(document.getElementById('chartTreatment'), {
-  type: 'bar',
-  data: {
-    labels: ['Treatment', 'Control'],
-    datasets: [{ label: 'Husbands', data: [$treat, $ctrl], backgroundColor: [TEAL, NAVY], borderRadius: 8 }]
-  },
-  options: {
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font: { family:'Inter', size:14, weight:'700' }, anchor:'center', align:'center' }
-    },
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: 10, ticks: { stepSize: 2, font:{family:'Inter',size:11}, color:'#475569' } } }
-  }
-});
-
-// ── OVERVIEW: Work Status
-new Chart(document.getElementById('chartWorkStatus'), {
-  type: 'doughnut',
-  data: {
-    labels: ['Currently Working', 'Not Working'],
-    datasets: [{ data: [$wWorking, $wNotWork], backgroundColor: [TEAL, RED], borderWidth: 0 }]
-  },
-  options: {
-    plugins: {
-      legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 11 } } },
-      datalabels: { display: true, color: '#fff', font: { family: 'Inter', size: 13, weight: '700' }, formatter: v => v }
-    }
-  }
-});
-
-// ── OVERVIEW: Earnings Comparison
-new Chart(document.getElementById('chartEarningsOverview'), {
-  type: 'bar',
-  data: {
-    labels: ['Wife (Home)', 'Husband (Outside)'],
-    datasets: [{ data: [$wAvgEarn, $hAvgEarn], backgroundColor: [RED, NAVY], borderRadius: 8 }]
-  },
-  options: {
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font: { family:'Inter', size:11, weight:'700' },
-        anchor:'center', align:'center', formatter: v => 'PKR '+v.toLocaleString() }
-    },
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, ticks: { font:{family:'Inter',size:11}, color:'#475569', callback: v => 'PKR '+v.toLocaleString() } } }
-  }
-});
-
-// ── OVERVIEW: Harassment Overview
-new Chart(document.getElementById('chartHarassOverview'), {
-  type: 'bar',
-  data: {
-    labels: ['Never', 'Rare', 'Somewhat\nCommon', 'Very\nCommon'],
-    datasets: [
-      { label: 'Husbands', data: [$($harH.never), $($harH.rare), $($harH.some), 0], backgroundColor: NAVY, borderRadius: 6 },
-      { label: 'Wives', data: [$($harW.never), $($harW.rare), $($harW.some), 0], backgroundColor: RED, borderRadius: 6 }
-    ]
-  },
-  options: {
-    ...defaults,
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: $([math]::Max($nH,$nW)+2), ticks: { stepSize: 2, font:{family:'Inter',size:11}, color:'#475569' } } }
-  }
-});
-
-// ── WIFE: Status
-new Chart(document.getElementById('chartWifeStatus'), {
-  type: 'bar',
-  data: {
-    labels: ['Currently Working', 'Not Working'],
-    datasets: [{ data: [$wWorking, $wNotWork], backgroundColor: [TEAL, RED], borderRadius: 8 }]
-  },
-  options: {
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:14,weight:'700'}, anchor:'center', align:'center' }
-    },
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: $([math]::Max($wWorking,$wNotWork)+3), ticks:{stepSize:2,font:{family:'Inter',size:11},color:'#475569'} } }
-  }
-});
-
-// ── WIFE: Consider Outside
-new Chart(document.getElementById('chartConsiderOutside'), {
-  type: 'bar',
-  data: {
-    labels: ['Considered Outside Work', 'Did Not Consider'],
-    datasets: [{ data: [$wConsider, $(($w | Where-Object {$_.consider_outside_12m -eq '2'}).Count)], backgroundColor: [PURPLE, NAVY], borderRadius: 8 }]
-  },
-  options: {
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:14,weight:'700'}, anchor:'center', align:'center' }
-    },
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: 14, ticks:{stepSize:2,font:{family:'Inter',size:11},color:'#475569'} } }
-  }
-});
-
-// ── WIFE: Discuss Husband
-new Chart(document.getElementById('chartDiscussHusband'), {
-  type: 'bar',
-  data: {
-    labels: ['Yes, Once', 'No, Never'],
-    datasets: [{ data: [$wDiscuss, $(($w | Where-Object {$_.discuss_husband_12m -eq '3'}).Count)], backgroundColor: [TEAL, RED], borderRadius: 8 }]
-  },
-  options: {
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:14,weight:'700'}, anchor:'center', align:'center' }
-    },
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: 12, ticks:{stepSize:2,font:{family:'Inter',size:11},color:'#475569'} } }
-  }
-});
-
-// ── WIFE: Husband Reaction
-new Chart(document.getElementById('chartHusbandReaction'), {
-  type: 'bar',
-  data: {
-    labels: ['Supportive', 'Open / Needs Time', 'Very Against'],
-    datasets: [{ data: [$hrSup, $hrOpen, $hrAgst], backgroundColor: [TEAL, AMBER, RED], borderRadius: 8 }]
-  },
-  options: {
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:14,weight:'700'}, anchor:'center', align:'center' }
-    },
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: 4, ticks:{stepSize:1,font:{family:'Inter',size:11},color:'#475569'} } }
-  }
-});
-
-// ── WIFE: Concerns
-new Chart(document.getElementById('chartWifeConcerns'), {
-  type: 'bar',
-  data: {
-    labels: ['Household\nChores', 'Childcare', 'Family\nOpinion', 'Safety /\nTravel'],
-    datasets: [{ data: [$wCon1, $wCon2, $wCon3, $wCon5], backgroundColor: [RED, AMBER, NAVY, PURPLE], borderRadius: 8 }]
-  },
-  options: {
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:13,weight:'700'}, anchor:'center', align:'center' }
-    },
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: $([math]::Max($wCon1,$wCon2)+3), ticks:{stepSize:2,font:{family:'Inter',size:11},color:'#475569'} } }
-  }
-});
-
-// ── HUSBAND: Sector
-new Chart(document.getElementById('chartHusbandSector'), {
-  type: 'bar',
-  data: {
-    labels: ['Apparel / Garment', 'Other Manufacturing', 'Transportation', 'Hospitality', 'Construction'],
-    datasets: [{ data: [$sec1, $sec2, $sec5, $sec6, $sec3], backgroundColor: [NAVY, TEAL, AMBER, PURPLE, RED], borderRadius: 8 }]
-  },
-  options: {
-    indexAxis: 'y',
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:12,weight:'700'}, anchor:'end', align:'left' }
-    },
-    scales: {
-      x: { ...defaults.scales.x, max: $([math]::Max($sec1,$sec2)+3), ticks:{font:{family:'Inter',size:11},color:'#475569'} },
-      y: { ticks: { font:{family:'Inter',size:11}, color:'#475569' }, grid:{display:false} }
-    }
-  }
-});
-
-// ── HUSBAND: Work Change
-new Chart(document.getElementById('chartWorkChange'), {
-  type: 'doughnut',
-  data: {
-    labels: ['Same as 12m Ago', 'Worse than 12m Ago'],
-    datasets: [{ data: [$wChSame, $wChWorse], backgroundColor: [AMBER, RED], borderWidth: 0 }]
-  },
-  options: {
-    plugins: {
-      legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 12 } } },
-      datalabels: { display: true, color: '#fff', font: { family: 'Inter', size: 13, weight: '700' }, formatter: v => v }
-    }
-  }
-});
-
-// ── HUSBAND: Concerns
-new Chart(document.getElementById('chartHusbandConcerns'), {
-  type: 'bar',
-  data: {
-    labels: ['Childcare', 'Household\nChores', 'Safety /\nTravel'],
-    datasets: [{ data: [$hCon2, $hCon1, $hCon5], backgroundColor: [RED, AMBER, NAVY], borderRadius: 8 }]
-  },
-  options: {
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:14,weight:'700'}, anchor:'center', align:'center' }
-    },
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: $([math]::Max($hCon1,$hCon2)+3), ticks:{stepSize:2,font:{family:'Inter',size:11},color:'#475569'} } }
-  }
-});
-
-// ── HUSBAND: Harassment
-new Chart(document.getElementById('chartHusbandHarass'), {
-  type: 'bar',
-  data: {
-    labels: ['Never Happens', 'Rare', 'Somewhat Common', 'Very Common'],
-    datasets: [{ data: [$($harH.never), $($harH.rare), $($harH.some), 0], backgroundColor: [TEAL, AMBER, RED, NAVY], borderRadius: 8 }]
-  },
-  options: {
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:13,weight:'700'}, anchor:'center', align:'center' }
-    },
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: $($nH+2), ticks:{stepSize:2,font:{family:'Inter',size:11},color:'#475569'} } }
-  }
-});
-
-// ── EARNINGS: Bar Comparison
-new Chart(document.getElementById('chartEarningsBar'), {
-  type: 'bar',
-  data: {
-    labels: ['Wife (Home-Based)', 'Husband (Outside)'],
-    datasets: [{ data: [$wAvgEarn, $hAvgEarn], backgroundColor: [RED, NAVY], borderRadius: 10 }]
-  },
-  options: {
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:11,weight:'700'},
-        anchor:'center', align:'center', formatter: v => 'PKR\n'+v.toLocaleString() }
-    },
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, ticks:{ font:{family:'Inter',size:11}, color:'#475569', callback: v => 'PKR '+v.toLocaleString() } } }
-  }
-});
-
-// ── EARNINGS: Wage Awareness
-new Chart(document.getElementById('chartWageAwareness'), {
-  type: 'bar',
-  data: {
-    labels: ['Wife Actual\n(Home Work)', "Wife's Estimate\n(Factory Wage)", "Husband's Estimate\n(Factory Wage)"],
-    datasets: [{ data: [$wAvgEarn, $wAw1R, $([math]::Round(($h | Where-Object {$_.awareness_wage1 -match '^\d'} | ForEach-Object { [double]$_.awareness_wage1 } | Measure-Object -Average).Average, 0))], backgroundColor: [RED, TEAL, NAVY], borderRadius: 8 }]
-  },
-  options: {
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:10,weight:'700'},
-        anchor:'center', align:'center', formatter: v => 'PKR\n'+v.toLocaleString() }
-    },
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, ticks:{ font:{family:'Inter',size:11},color:'#475569', callback: v=>'PKR '+v.toLocaleString() } } }
-  }
-});
-
-// ── EARNINGS: Share Husband
-new Chart(document.getElementById('chartShareHusband'), {
-  type: 'doughnut',
-  data: {
-    labels: ['Wife Keeps All', 'Wife Keeps Half', 'Husband Gets Most', 'Wife Keeps Most'],
-    datasets: [{ data: [$hSh5, $hSh3, $hSh2, $hSh4], backgroundColor: [TEAL, AMBER, RED, PURPLE], borderWidth: 0 }]
-  },
-  options: {
-    plugins: {
-      legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 11 } } },
-      datalabels: { display: true, color: '#fff', font: { family: 'Inter', size: 12, weight: '700' }, formatter: v => v }
-    }
-  }
-});
-
-// ── EARNINGS: Share Wife
-new Chart(document.getElementById('chartShareWife'), {
-  type: 'doughnut',
-  data: {
-    labels: ['Wife Keeps All', 'Husband Gets Half', 'Husband Gets Most', 'Husband Gets All'],
-    datasets: [{ data: [$wSh5, $wSh3, $wSh2, $wSh1], backgroundColor: [TEAL, AMBER, RED, NAVY], borderWidth: 0 }]
-  },
-  options: {
-    plugins: {
-      legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 11 } } },
-      datalabels: { display: true, color: '#fff', font: { family: 'Inter', size: 12, weight: '700' }, formatter: v => v }
-    }
-  }
-});
-
-// ── HOUSEHOLD: Time Use
-new Chart(document.getElementById('chartTimeUse'), {
-  type: 'bar',
-  data: {
-    labels: ['Household Chores', 'Caregiving'],
-    datasets: [
-      { label: 'Wife (own)', data: [$wOChR, $wOCrR], backgroundColor: RED, borderRadius: 6 },
-      { label: 'Husband (own)', data: [$hOChR, $([math]::Round(($h | Where-Object {$_.own_care_hr -match '^\d'} | ForEach-Object { [double]$_.own_care_hr } | Measure-Object -Average).Average, 2))], backgroundColor: NAVY, borderRadius: 6 }
-    ]
-  },
-  options: {
-    ...defaults,
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: 5, ticks:{font:{family:'Inter',size:11},color:'#475569'}, title:{display:true,text:'Hours per Day',font:{family:'Inter',size:11},color:'#475569'} } }
-  }
-});
-
-// ── HOUSEHOLD: Spouse Help
-new Chart(document.getElementById('chartSpouseHelp'), {
-  type: 'bar',
-  data: {
-    labels: ['Husband helps\nwife w/ chores', 'Wife helps\nhusband w/ chores'],
-    datasets: [{ data: [$hSpChR, $([math]::Round(($h | Where-Object {$_.sp_chores_hr -match '^\d'} | ForEach-Object { [double]$_.sp_chores_hr } | Measure-Object -Average).Average, 2))], backgroundColor: [NAVY, RED], borderRadius: 8 }]
-  },
-  options: {
-    ...defaults,
-    plugins: { ...defaults.plugins, legend: { display: false },
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:12,weight:'700'}, anchor:'center', align:'center', formatter: v => v+'h' }
-    },
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: 3, ticks:{font:{family:'Inter',size:11},color:'#475569'}, title:{display:true,text:'Hours per Day',font:{family:'Inter',size:11},color:'#475569'} } }
-  }
-});
-
-// ── HOUSEHOLD: Trip Mode
-new Chart(document.getElementById('chartTripHow'), {
-  type: 'doughnut',
-  data: {
-    labels: ['Walk', 'Rickshaw', 'Bus'],
-    datasets: [{ data: [$tripWalk, $tripRick, $tripBus], backgroundColor: [TEAL, AMBER, NAVY], borderWidth: 0 }]
-  },
-  options: {
-    plugins: {
-      legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 12 } } },
-      datalabels: { display: true, color: '#fff', font: { family: 'Inter', size: 13, weight: '700' }, formatter: v => v }
-    }
-  }
-});
-
-// ── HOUSEHOLD: Trip Company
-new Chart(document.getElementById('chartTripCompany'), {
-  type: 'doughnut',
-  data: {
-    labels: ['Alone', 'With Family', 'With Colleague'],
-    datasets: [{ data: [$tripAlone, $tripFam, $tripColl], backgroundColor: [RED, NAVY, TEAL], borderWidth: 0 }]
-  },
-  options: {
-    plugins: {
-      legend: { position: 'bottom', labels: { font: { family: 'Inter', size: 12 } } },
-      datalabels: { display: true, color: '#fff', font: { family: 'Inter', size: 13, weight: '700' }, formatter: v => v }
-    }
-  }
-});
-
-// ── DECISIONS: Wife
-new Chart(document.getElementById('chartDecisionWife'), {
-  type: 'bar',
-  data: {
-    labels: ['Healthcare', 'Large\nPurchases', 'Family\nVisits'],
-    datasets: [
-      { label: 'Joint (Wife+Husband)', data: [$($dm_w.d1), $($dm_w.d2), $($dm_w.d3)], backgroundColor: TEAL, borderRadius: 6 },
-      { label: 'Husband Alone', data: [$(($w | Where-Object {$_.decision_making_1 -eq '3'}).Count), $(($w | Where-Object {$_.decision_making_2 -eq '3'}).Count), $(($w | Where-Object {$_.decision_making_3 -eq '3'}).Count)], backgroundColor: RED, borderRadius: 6 }
-    ]
-  },
-  options: {
-    ...defaults,
-    scales: { ...defaults.scales,
-      x: { ...defaults.scales.x, stacked: true },
-      y: { ...defaults.scales.y, stacked: true, max: 16, ticks:{stepSize:2,font:{family:'Inter',size:11},color:'#475569'} }
-    },
-    plugins: { ...defaults.plugins,
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:11,weight:'700'}, formatter: v => v > 0 ? v : '' }
-    }
-  }
-});
-
-// ── DECISIONS: Husband
-new Chart(document.getElementById('chartDecisionHusband'), {
-  type: 'bar',
-  data: {
-    labels: ['Healthcare', 'Large\nPurchases', 'Family\nVisits'],
-    datasets: [
-      { label: 'Joint (Wife+Husband)', data: [$($dm_h.d1), $($dm_h.d2), $($dm_h.d3)], backgroundColor: NAVY, borderRadius: 6 },
-      { label: 'Husband Alone', data: [$(($h | Where-Object {$_.decision_making_1 -eq '3'}).Count), $(($h | Where-Object {$_.decision_making_2 -eq '3'}).Count), $(($h | Where-Object {$_.decision_making_3 -eq '3'}).Count)], backgroundColor: RED, borderRadius: 6 }
-    ]
-  },
-  options: {
-    ...defaults,
-    scales: { ...defaults.scales,
-      x: { ...defaults.scales.x, stacked: true },
-      y: { ...defaults.scales.y, stacked: true, max: 16, ticks:{stepSize:2,font:{family:'Inter',size:11},color:'#475569'} }
-    },
-    plugins: { ...defaults.plugins,
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:11,weight:'700'}, formatter: v => v > 0 ? v : '' }
-    }
-  }
-});
-
-// ── DECISIONS: Cross Compare
-$jdW1 = if ($($dm_w.d1) -gt 0 -and $nH -gt 0) { [math]::Round($($dm_w.d1)*100/14,0) } else { 0 }
-$jdW2 = if ($($dm_w.d2) -gt 0 -and $nH -gt 0) { [math]::Round($($dm_w.d2)*100/14,0) } else { 0 }
-$jdW3 = if ($($dm_w.d3) -gt 0 -and $nH -gt 0) { [math]::Round($($dm_w.d3)*100/14,0) } else { 0 }
-$jdH1 = if ($($dm_h.d1) -gt 0 -and $nH -gt 0) { [math]::Round($($dm_h.d1)*100/$nH,0) } else { 0 }
-$jdH2 = if ($($dm_h.d2) -gt 0 -and $nH -gt 0) { [math]::Round($($dm_h.d2)*100/$nH,0) } else { 0 }
-$jdH3 = if ($($dm_h.d3) -gt 0 -and $nH -gt 0) { [math]::Round($($dm_h.d3)*100/$nH,0) } else { 0 }
-new Chart(document.getElementById('chartDecisionCompare'), {
-  type: 'bar',
-  data: {
-    labels: ['Healthcare', 'Large Purchases', 'Family Visits'],
-    datasets: [
-      { label: 'Wife reports Joint (%)', data: [$jdW1, $jdW2, $jdW3], backgroundColor: RED, borderRadius: 6 },
-      { label: 'Husband reports Joint (%)', data: [$jdH1, $jdH2, $jdH3], backgroundColor: NAVY, borderRadius: 6 }
-    ]
-  },
-  options: {
-    ...defaults,
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: 110, ticks:{font:{family:'Inter',size:11},color:'#475569', callback: v=>v+'%'} } },
-    plugins: { ...defaults.plugins,
-      datalabels: { display: true, color: '#fff', font:{family:'Inter',size:12,weight:'700'}, anchor:'center', align:'center', formatter: v=>v+'%' }
-    }
-  }
-});
-
-// ── WELLBEING: Mental Health
-new Chart(document.getElementById('chartMentalHealth'), {
-  type: 'bar',
-  data: {
-    labels: ['mh_1\nLittle Interest', 'mh_2\nFeeling Down', 'mh_3\nTired/Fatigue', 'mh_4\nFeeling Happy', 'mh_5\nSatisfied'],
-    datasets: [
-      { label: 'Wife', data: [$($mhVarsW['mh_1']), $($mhVarsW['mh_2']), $($mhVarsW['mh_3']), $($mhVarsW['mh_4']), $($mhVarsW['mh_5'])], backgroundColor: RED, borderRadius: 6 },
-      { label: 'Husband', data: [$($mhVarsH['mh_1']), $($mhVarsH['mh_2']), $($mhVarsH['mh_3']), $($mhVarsH['mh_4']), $($mhVarsH['mh_5'])], backgroundColor: NAVY, borderRadius: 6 }
-    ]
-  },
-  options: {
-    ...defaults,
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, min: 0, max: 4.5, ticks:{font:{family:'Inter',size:11},color:'#475569'} } }
-  }
-});
-
-// ── WELLBEING: Social Desirability
-$sd = @{}
-foreach ($i in 1..5) {
-  $vW = ($w | Where-Object {$_."sd_$i" -match '^\d'} | ForEach-Object { [double]$_."sd_$i" } | Measure-Object -Average).Average
-  $vH = ($h | Where-Object {$_."sd_$i" -match '^\d'} | ForEach-Object { [double]$_."sd_$i" } | Measure-Object -Average).Average
-  $sd["w$i"] = if ($vW) { [math]::Round($vW,2) } else { 0 }
-  $sd["h$i"] = if ($vH) { [math]::Round($vH,2) } else { 0 }
-}
-new Chart(document.getElementById('chartSocialDesirability'), {
-  type: 'bar',
-  data: {
-    labels: ['sd_1\nCourteous', 'sd_2\nTook Advantage', 'sd_3\nGet Even', 'sd_4\nFeel Resentful', 'sd_5\nGood Listener'],
-    datasets: [
-      { label: 'Wife', data: [$($sd.w1), $($sd.w2), $($sd.w3), $($sd.w4), $($sd.w5)], backgroundColor: RED, borderRadius: 6 },
-      { label: 'Husband', data: [$($sd.h1), $($sd.h2), $($sd.h3), $($sd.h4), $($sd.h5)], backgroundColor: NAVY, borderRadius: 6 }
-    ]
-  },
-  options: {
-    ...defaults,
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, min: 0, max: 2.5, ticks:{font:{family:'Inter',size:11},color:'#475569'}, title:{display:true,text:'Mean (1=True, 2=False)',font:{family:'Inter',size:11},color:'#475569'} } }
-  }
-});
-
-// ── WELLBEING: Harassment Compare
-new Chart(document.getElementById('chartHarassCompare'), {
-  type: 'bar',
-  data: {
-    labels: ['Never', 'Rare', 'Somewhat Common'],
-    datasets: [
-      { label: 'Husbands (n=$nH)', data: [$($harH.never), $($harH.rare), $($harH.some)], backgroundColor: NAVY, borderRadius: 6 },
-      { label: 'Wives (n=14)', data: [$($harW.never), $($harW.rare), $($harW.some)], backgroundColor: RED, borderRadius: 6 }
-    ]
-  },
-  options: {
-    ...defaults,
-    scales: { ...defaults.scales, y: { ...defaults.scales.y, max: $([math]::Max($nH,$nW)+2), ticks:{stepSize:2,font:{family:'Inter',size:11},color:'#475569'} } }
-  }
-});
-"@
-
-# Find and replace the chart JS block in index.html
-$startMarker = "// ── OVERVIEW: Composition Doughnut"
-$endMarker   = "});"  # last chart ends with });
-
-$startIdx = $html.IndexOf($startMarker)
-# Find the end of the last chart block
-$lastChartEnd = $html.LastIndexOf("`n});`n`n</script>")
-if ($lastChartEnd -lt 0) { $lastChartEnd = $html.LastIndexOf("`n});`n</script>") }
-
-if ($startIdx -ge 0 -and $lastChartEnd -ge 0) {
-    $before = $html.Substring(0, $startIdx)
-    $after  = $html.Substring($lastChartEnd + 5) # 5 = length of "});\n\n"
-    $html = $before + $jsBlock + "`n`n" + $after
-    Write-Host "Chart data updated successfully" -ForegroundColor Green
-} else {
-    Write-Host "WARNING: Could not find chart block markers — skipping JS update" -ForegroundColor Yellow
-}
-
-# Write updated HTML
-$html | Set-Content "$DashboardDir\index.html" -Encoding UTF8
-Write-Host "index.html written." -ForegroundColor Green
 
 # ── Git commit and push
+Write-Host ""
+Write-Host "Committing and pushing to GitHub..." -ForegroundColor Yellow
+
+$today = Get-Date -Format 'yyyy-MM-dd'
 git -C $DashboardDir add index.html
-$commitMsg = "Auto-update: $today (wives=$nW, husbands=$nH, wife_earn=PKR$wAvgEarn)"
-git -C $DashboardDir commit -m $commitMsg
+git -C $DashboardDir commit -m "Daily update: $today — stats refreshed from DTA files"
 git -C $DashboardDir push origin main
 
-Write-Host "`nDone! Dashboard updated and pushed to GitHub." -ForegroundColor Cyan
-Write-Host "Live at: https://homebased.rs.org.pk" -ForegroundColor Green
+Write-Host ""
+Write-Host "Done! Dashboard live at: https://homebased.rs.org.pk" -ForegroundColor Cyan
