@@ -302,6 +302,38 @@
         <div class="chart-wrap"><canvas id="chartHarassOverview"></canvas></div>
       </div>
     </div>
+    <!-- Husband Consent to Share Previous Answers — T Group -->
+    <div style="margin-bottom:24px;">
+      <div class="chart-card" style="display:flex;gap:32px;align-items:flex-start;flex-wrap:wrap;padding:28px 28px 24px;">
+        <div style="flex-shrink:0;text-align:center;min-width:110px;">
+          <div style="font-size:58px;font-weight:800;color:var(--teal-700);line-height:1;" id="hc-pct"></div>
+          <div style="font-size:11px;color:var(--n-600);text-transform:uppercase;letter-spacing:.6px;margin-top:6px;font-weight:600;">Consent Rate</div>
+          <div style="font-size:12px;color:var(--n-400);margin-top:4px;" id="hc-count-lbl"></div>
+        </div>
+        <div style="flex:1;min-width:240px;">
+          <h3 style="border-left-color:var(--teal-500);font-size:15px;margin-bottom:6px;">Treatment Husbands — Consent to Share Previous Answers with Wife</h3>
+          <p style="font-size:13px;color:var(--n-600);margin-bottom:18px;line-height:1.55;" id="hc-desc"></p>
+          <div class="progress-list">
+            <div>
+              <div class="progress-header">
+                <span class="progress-label">Agreed to Share</span>
+                <span class="progress-pct" id="hc-yes-pct"></span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill teal" id="hc-yes-bar" style="width:0%"></div></div>
+            </div>
+            <div>
+              <div class="progress-header">
+                <span class="progress-label">Did Not Agree</span>
+                <span class="progress-pct" id="hc-no-pct"></span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill red" id="hc-no-bar" style="width:0%"></div></div>
+            </div>
+          </div>
+          <div class="insight-box teal" style="margin-top:18px;margin-bottom:0;" id="hc-insight"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Interest Form by Treatment -->
     <div style="margin-bottom:24px;">
       <div class="section-header" style="margin-bottom:20px;padding-bottom:12px;">
@@ -894,110 +926,113 @@
    DATA BLOCK — updated daily by update_dashboard.ps1
    ══════════════════════════════════════════════════════ */
 const DATA = {
-  lastUpdated:    "April 24, 2026",
+  lastUpdated:    "April 25, 2026",
 
-  // -- Sample
-  nWives:         30,
-  nHusbands:      30,
-  treatment:      20,
-  control:        10,
+  // ── Sample
+  nWives:         47,
+  nHusbands:      47,
+  treatment:      28,
+  control:        19,
 
-  // -- Wife employment
-  wWorking:       25,
-  wNotWorking:    5,
+  // ── Wife employment
+  wWorking:       30,
+  wNotWorking:    17,
   wWorkDays:      5.5,
   wWorkHrs:       5.1,
-  wStitching:     29,
+  wStitching:     45,
   wOtherWork:     0,
-  wConsider:      6,
-  wDontConsider:  24,
-  wDiscussed:     3,
-  wNeverDiscussed:27,
+  wConsider:      4,
+  wDontConsider:  43,
+  wDiscussed:     6,
+  wNeverDiscussed:41,
   hrSupport:      1,
   hrOpen:         1,
-  hrAgainst:      1,
-  wConcernChores: 11,
-  wConcernCare:   8,
-  wConcernFamily: 3,
-  wConcernSafety: 5,
+  hrAgainst:      4,
+  wConcernChores: 16,
+  wConcernCare:   13,
+  wConcernFamily: 11,
+  wConcernSafety: 4,
 
-  // -- Husband employment
-  hSectorApparel: 15,
-  hSectorMfg:     2,
-  hSectorTransport:4,
-  hSectorHospitality:4,
+  // ── Husband employment
+  hSectorApparel: 26,
+  hSectorMfg:     6,
+  hSectorTransport:3,
+  hSectorHospitality:7,
   hSectorConstruct:1,
-  hWeeklyHrs:     54.0,
-  wStillWorking:  25,
-  wWorkSame:      8,
-  wWorkWorse:     17,
-  hConcernCare:   12,
-  hConcernChores: 12,
+  hWeeklyHrs:     50.0,
+  wStillWorking:  30,
+  wWorkSame:      18,
+  wWorkWorse:     12,
+  hConcernCare:   17,
+  hConcernChores: 26,
   hConcernSafety: 2,
 
-  // -- Earnings
-  wAvgEarnings:   5412,
-  hAvgEarnings:   37933,
-  wFactoryEst:    29467,
-  hFactoryEst:    30700,
+  // ── Earnings
+  wAvgEarnings:   5103,
+  hAvgEarnings:   38298,
+  wFactoryEst:    25319,
+  hFactoryEst:    26872,
 
   // Earnings share (husband view): 1=Husb all,2=Husb most,3=Half,4=Wife most,5=Wife all
-  hShare: { wifeAll:8, half:4, husbMost:8, wifeMost:4 },
+  hShare: { wifeAll:16, half:3, husbMost:5, wifeMost:6 },
   // Earnings share (wife view):    1=Husb all,2=Husb most,3=Half,5=Wife all
-  wShare: { wifeAll:6, half:5, husbMost:6, husbAll:7 },
+  wShare: { wifeAll:13, half:4, husbMost:6, husbAll:6 },
 
-  // -- Household time (hrs/day)
-  wOwnChores:     4.4,
-  wOwnCare:       2.3,
-  hOwnChores:     0.57,
-  hOwnCare:       0.7,
-  hHelpsWife:     0.97,
-  wHelpsHusb:     0.6,
+  // ── Household time (hrs/day)
+  wOwnChores:     4.11,
+  wOwnCare:       2.34,
+  hOwnChores:     0.79,
+  hOwnCare:       0.98,
+  hHelpsWife:     1.19,
+  wHelpsHusb:     0.7,
 
-  // -- Mobility
-  tripWalk:       11,
-  tripRick:       13,
-  tripBus:        6,
-  tripAlone:      15,
-  tripFamily:     13,
-  tripColleague:  2,
-  tripsPerWeek:   2.23,
+  // ── Mobility
+  tripWalk:       21,
+  tripRick:       17,
+  tripBus:        9,
+  tripAlone:      26,
+  tripFamily:     15,
+  tripColleague:  5,
+  tripsPerWeek:   2.43,
 
-  // -- Decision making (count of joint responses, base n=30 each)
-  dmBase:         30,
-  dmWifeJoint:    [25, 26, 26],
-  dmWifeHusbAlone:[3,  4,  4],
-  dmHusbJoint:    [20, 20, 20],
-  dmHusbAlone:    [9,  9,  7],
+  // ── Decision making (count of joint responses, base n=47 each)
+  dmBase:         47,
+  dmWifeJoint:    [45, 44, 43],
+  dmWifeHusbAlone:[0,  2,  4],
+  dmHusbJoint:    [41, 40, 41],
+  dmHusbAlone:    [5,  5,  3],
 
-  // -- Harassment
-  harHusb: { never:2, rare:4, some:17 },
-  harWife: { never:7, rare:7, some:15  },
+  // ── Harassment
+  harHusb: { never:2, rare:4, some:32 },
+  harWife: { never:13, rare:13, some:19 },
 
-  // -- Mental health means (1=Not at all, 4=Nearly every day)
-  mhWife: [1.13, 1.23, 2.17, 2.87, 3.57],
-  mhHusb: [1.77, 1.9, 2.5, 2.4, 2.7],
+  // ── Mental health means (1=Not at all, 4=Nearly every day)
+  mhWife: [1.19, 1.09, 1.83, 2.19, 2.91],
+  mhHusb: [2.0, 2.02, 2.43, 2.36, 2.7],
 
-  // -- Social desirability means (1=True, 2=False)
-  sdWife: [1.17, 1.5, 1.43, 1.53, 1.17],
-  sdHusb: [1.2, 1.6, 1.27, 1.33, 1.23],
+  // ── Social desirability means (1=True, 2=False)
+  sdWife: [1.17, 1.6, 1.45, 1.55, 1.19],
+  sdHusb: [1.11, 1.43, 1.21, 1.23, 1.17],
 
-  // -- Wife MH distribution (counts per level 1-4 for each of mh_1...mh_5)
+  // ── Wife MH distribution (counts per level 1-4 for each of mh_1...mh_5)
   mhWifeDist: [
-    [26, 4, 0, 0],
-    [24, 5, 1, 0],
-    [9, 9, 10, 2],
-    [4, 8, 6, 12],
-    [0, 3, 7, 20]
+    [39, 7, 1, 0],
+    [44, 2, 1, 0],
+    [23, 12, 9, 3],
+    [18, 12, 7, 10],
+    [12, 3, 9, 23]
   ],
 
-  // -- Interest Form (factory job expression of interest, wife survey)
+  // ── Interest Form (factory job expression of interest, wife survey)
   interestForm: {
-    treatAgree:   8,  ctrlAgree:   5,
-    treatDecline: 12,  ctrlDecline: 5,
-    treatTotal:   20, ctrlTotal: 10,
+    treatAgree:   8,  ctrlAgree:   8,
+    treatDecline: 20, ctrlDecline: 11,
+    treatTotal:   28, ctrlTotal:   19,
     noData:       0
-  }
+  },
+
+  // ── Husband consent to share previous answers with wife (T group only)
+  hConsentShare: { yes: 24, no: 4, total: 28 }
 };
 
 /* ══════════════════════════════════════════════════════
@@ -1096,6 +1131,19 @@ function initDashboard() {
   set('cd-wstatus', `Current employment status among wife respondents (n=${wWorkBase} with data)`);
   set('cd-harass', `How common is harassment for women travelling to work? (husband n=${nH}, wife n=${D.harWife.never+D.harWife.rare+D.harWife.some})`);
   set('fn-overview', `Data collected ${D.lastUpdated} via SurveyCTO digital CAPI. Husband survey: n=${nH} (${D.treatment} treatment, ${D.control} control). Wife survey: n=${nW} (${wWorkBase} with full data, ${nW-wWorkBase} no consent). Study area: Pakistan garment/textile sector. Research Solutions (M&A Research Solutions LLC) | www.rs.org.pk`);
+
+  // ── Husband Consent to Share
+  const HC = D.hConsentShare;
+  const hcPct   = pct(HC.yes, HC.total);
+  const hcNoPct = pct(HC.no,  HC.total);
+  set('hc-pct',       hcPct + '%');
+  set('hc-count-lbl', `${HC.yes} of ${HC.total}`);
+  set('hc-desc',      `Among ${HC.total} treatment-group husbands, ${HC.yes} agreed to share their previous survey answers with their wives. This consent was collected at endline (T group only).`);
+  set('hc-yes-pct',   `${HC.yes} of ${HC.total} (${hcPct}%)`);
+  set('hc-no-pct',    `${HC.no} of ${HC.total} (${hcNoPct}%)`);
+  setW('hc-yes-bar',  hcPct);
+  setW('hc-no-bar',   hcNoPct);
+  set('hc-insight',   `<strong>${hcPct}% of treatment husbands consented</strong> — ${HC.yes} out of ${HC.total} agreed to share their previous survey choices with their wives. ${HC.no} declined. Control group was not asked this question.`);
 
   // ── Interest Form section
   const IF = D.interestForm;

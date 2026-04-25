@@ -185,6 +185,12 @@ tA = cnt(wt, 'form_1', 1); tD = cnt(wt, 'form_1', 2)
 cA = cnt(wc, 'form_1', 1); cD = cnt(wc, 'form_1', 2)
 noData = int(w['form_1'].isna().sum())
 
+# Husband consent to share previous answers with wife (T group only)
+ht = h[h['treat_label'] == 'Treatment']
+hConsent_yes   = int((ht['husband_consent'] == 1).sum())
+hConsent_no    = int((ht['husband_consent'] == 2).sum())
+hConsent_total = treat
+
 today = date.today().strftime('%B %#d, %Y')
 
 # Build new DATA block
@@ -292,7 +298,10 @@ new_data = f"""const DATA = {{
     treatDecline: {tD},  ctrlDecline: {cD},
     treatTotal:   {tA+tD}, ctrlTotal: {cA+cD},
     noData:       {noData}
-  }}
+  }},
+
+  // ── Husband consent to share previous answers with wife (T group only)
+  hConsentShare: {{ yes: {hConsent_yes}, no: {hConsent_no}, total: {hConsent_total} }}
 }};"""
 
 # Read index.html and replace the DATA block
