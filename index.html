@@ -926,113 +926,113 @@
    DATA BLOCK — updated daily by update_dashboard.ps1
    ══════════════════════════════════════════════════════ */
 const DATA = {
-  lastUpdated:    "April 25, 2026",
+  lastUpdated:    "April 26, 2026",
 
   // ── Sample
-  nWives:         47,
-  nHusbands:      47,
-  treatment:      28,
-  control:        19,
+  nWives:         98,
+  nHusbands:      98,
+  treatment:      60,
+  control:        38,
 
   // ── Wife employment
-  wWorking:       30,
-  wNotWorking:    17,
-  wWorkDays:      5.5,
-  wWorkHrs:       5.1,
-  wStitching:     45,
+  wWorking:       65,
+  wNotWorking:    33,
+  wWorkDays:      5.3,
+  wWorkHrs:       4.7,
+  wStitching:     96,
   wOtherWork:     0,
-  wConsider:      4,
-  wDontConsider:  43,
-  wDiscussed:     6,
-  wNeverDiscussed:41,
+  wConsider:      6,
+  wDontConsider:  92,
+  wDiscussed:     9,
+  wNeverDiscussed:88,
   hrSupport:      1,
   hrOpen:         1,
-  hrAgainst:      4,
-  wConcernChores: 16,
-  wConcernCare:   13,
-  wConcernFamily: 11,
-  wConcernSafety: 4,
+  hrAgainst:      6,
+  wConcernChores: 34,
+  wConcernCare:   31,
+  wConcernFamily: 19,
+  wConcernSafety: 5,
 
   // ── Husband employment
-  hSectorApparel: 26,
-  hSectorMfg:     6,
-  hSectorTransport:3,
-  hSectorHospitality:7,
+  hSectorApparel: 62,
+  hSectorMfg:     8,
+  hSectorTransport:5,
+  hSectorHospitality:11,
   hSectorConstruct:1,
-  hWeeklyHrs:     50.0,
-  wStillWorking:  30,
-  wWorkSame:      18,
-  wWorkWorse:     12,
-  hConcernCare:   17,
-  hConcernChores: 26,
-  hConcernSafety: 2,
+  hWeeklyHrs:     51.0,
+  wStillWorking:  69,
+  wWorkSame:      32,
+  wWorkWorse:     37,
+  hConcernCare:   30,
+  hConcernChores: 54,
+  hConcernSafety: 10,
 
   // ── Earnings
-  wAvgEarnings:   5103,
-  hAvgEarnings:   38298,
-  wFactoryEst:    25319,
-  hFactoryEst:    26872,
+  wAvgEarnings:   5025,
+  hAvgEarnings:   39151,
+  wFactoryEst:    26296,
+  hFactoryEst:    28327,
 
   // Earnings share (husband view): 1=Husb all,2=Husb most,3=Half,4=Wife most,5=Wife all
-  hShare: { wifeAll:16, half:3, husbMost:5, wifeMost:6 },
+  hShare: { wifeAll:26, half:11, husbMost:14, wifeMost:17 },
   // Earnings share (wife view):    1=Husb all,2=Husb most,3=Half,5=Wife all
-  wShare: { wifeAll:13, half:4, husbMost:6, husbAll:6 },
+  wShare: { wifeAll:24, half:12, husbMost:9, husbAll:10 },
 
   // ── Household time (hrs/day)
-  wOwnChores:     4.11,
-  wOwnCare:       2.34,
-  hOwnChores:     0.79,
-  hOwnCare:       0.98,
-  hHelpsWife:     1.19,
-  wHelpsHusb:     0.7,
+  wOwnChores:     4.35,
+  wOwnCare:       2.27,
+  hOwnChores:     0.7,
+  hOwnCare:       0.77,
+  hHelpsWife:     0.9,
+  wHelpsHusb:     0.73,
 
   // ── Mobility
-  tripWalk:       21,
-  tripRick:       17,
-  tripBus:        9,
-  tripAlone:      26,
-  tripFamily:     15,
-  tripColleague:  5,
+  tripWalk:       38,
+  tripRick:       33,
+  tripBus:        27,
+  tripAlone:      56,
+  tripFamily:     28,
+  tripColleague:  7,
   tripsPerWeek:   2.43,
 
-  // ── Decision making (count of joint responses, base n=47 each)
-  dmBase:         47,
-  dmWifeJoint:    [45, 44, 43],
-  dmWifeHusbAlone:[0,  2,  4],
-  dmHusbJoint:    [41, 40, 41],
-  dmHusbAlone:    [5,  5,  3],
+  // ── Decision making (count of "joint" responses, base n=98 each)
+  dmBase:         98,
+  dmWifeJoint:    [85, 84, 74],   // [health, purchases, visits]
+  dmWifeHusbAlone:[10,  12,  22],
+  dmHusbJoint:    [73, 70, 66],
+  dmHusbAlone:    [21,  26,  19],
 
   // ── Harassment
-  harHusb: { never:2, rare:4, some:32 },
-  harWife: { never:13, rare:13, some:19 },
+  harHusb: { never:2, rare:10, some:59 },
+  harWife: { never:29, rare:27, some:34  },
 
   // ── Mental health means (1=Not at all, 4=Nearly every day)
-  mhWife: [1.19, 1.09, 1.83, 2.19, 2.91],
-  mhHusb: [2.0, 2.02, 2.43, 2.36, 2.7],
+  mhWife: [1.39, 1.32, 2.09, 2.34, 2.84],
+  mhHusb: [2.08, 2.26, 2.55, 2.51, 2.7],
 
   // ── Social desirability means (1=True, 2=False)
-  sdWife: [1.17, 1.6, 1.45, 1.55, 1.19],
-  sdHusb: [1.11, 1.43, 1.21, 1.23, 1.17],
+  sdWife: [1.14, 1.67, 1.43, 1.6, 1.14],
+  sdHusb: [1.17, 1.39, 1.28, 1.22, 1.19],
 
   // ── Wife MH distribution (counts per level 1-4 for each of mh_1...mh_5)
   mhWifeDist: [
-    [39, 7, 1, 0],
-    [44, 2, 1, 0],
-    [23, 12, 9, 3],
-    [18, 12, 7, 10],
-    [12, 3, 9, 23]
+    [74, 14, 6, 4],  // mh_1
+    [78, 10, 9, 1],  // mh_2
+    [39, 25, 20, 14],  // mh_3
+    [35, 21, 16, 26],  // mh_4
+    [24, 11, 20, 43]   // mh_5
   ],
 
   // ── Interest Form (factory job expression of interest, wife survey)
   interestForm: {
-    treatAgree:   8,  ctrlAgree:   8,
-    treatDecline: 20, ctrlDecline: 11,
-    treatTotal:   28, ctrlTotal:   19,
+    treatAgree:   15,  ctrlAgree:   14,
+    treatDecline: 45,  ctrlDecline: 24,
+    treatTotal:   60, ctrlTotal: 38,
     noData:       0
   },
 
   // ── Husband consent to share previous answers with wife (T group only)
-  hConsentShare: { yes: 24, no: 4, total: 28 }
+  hConsentShare: { yes: 49, no: 11, total: 60 }
 };
 
 /* ══════════════════════════════════════════════════════
