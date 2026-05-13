@@ -1537,7 +1537,7 @@ function drawCharts(D, nW, nH, wWorkBase, dmWH, dmHH) {
 
   mk('chartHarassCompare',{type:'bar',data:{labels:['Never','Rare','Somewhat Common'],
     datasets:[{label:`Husbands (n=${nH})`,data:[D.harHusb.never,D.harHusb.rare,D.harHusb.some],backgroundColor:NAVY,borderRadius:6},
-              {label:'Wives (n=14)',data:[D.harWife.never,D.harWife.rare,D.harWife.some],backgroundColor:RED,borderRadius:6}]},
+              {label:`Wives (n=${D.harWife.never+D.harWife.rare+D.harWife.some})`,data:[D.harWife.never,D.harWife.rare,D.harWife.some],backgroundColor:RED,borderRadius:6}]},
     options:{...base,scales:{...base.scales,y:{...base.scales.y,max:Math.max(nH,nW)+3,ticks:{stepSize:2,font:{family:'Inter',size:11},color:'#475569'}}}}});
 }
 </script>
